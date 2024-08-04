@@ -128,15 +128,11 @@ func (c *cpu) Loop(loopCont func(op uint16) error) error {
 	exec := 0
 
 	for running {
-		err := c.Step()
-
-		if err != nil {
+		if err := c.Step(); err != nil {
 			return err
 		}
 
-		err = loopCont(c.op)
-
-		if err != nil {
+		if err := loopCont(c.op); err != nil {
 			return err
 		}
 
@@ -165,11 +161,8 @@ func (c *cpu) Step() error {
 }
 
 // incrProgramCounter increments the program counter.
-func (c *cpu) incrProgramCounter() uint16 {
-	pc := c.registers[registers.RPC]
-	pc++
-	c.registers[registers.RPC] = pc
-	return pc
+func (c *cpu) incrProgramCounter() {
+	c.registers[registers.RPC] += 1
 }
 
 // memoryRead reads a value from the current memory address.
@@ -178,7 +171,6 @@ func (c *cpu) memoryRead(address uint16) (uint16, error) {
 		reader := bufio.NewReader(os.Stdin)
 
 		key, err := reader.ReadByte()
-
 		if err != nil {
 			return 0, err
 		}
@@ -305,7 +297,6 @@ func handleLoad(cpu *cpu) error {
 	pcOffset := signExtend(cpu.instr&0x1FF, 9)
 
 	data, err := cpu.memoryRead(cpu.registers[registers.RPC] + pcOffset)
-
 	if err != nil {
 		return err
 	}
@@ -322,7 +313,6 @@ func handleLoadR(cpu *cpu) error {
 	br := (cpu.instr >> 6) & 0x7
 	offset := signExtend(cpu.instr&0x3F, 6)
 	k, err := cpu.memoryRead(cpu.registers[br] + offset)
-
 	if err != nil {
 		return err
 	}
@@ -388,13 +378,11 @@ func handleLoadIndirect(cpu *cpu) error {
 	pcOffset := signExtend(cpu.instr&0x1FF, 9)
 
 	addr, err := cpu.memoryRead(cpu.registers[registers.RPC] + pcOffset)
-
 	if err != nil {
 		return err
 	}
 
 	val, err := cpu.memoryRead(addr)
-
 	if err != nil {
 		return err
 	}
@@ -413,7 +401,6 @@ func handleTrap(cpu *cpu) error {
 	trap := cpu.instr & 0xFF
 
 	handler, ok := trapTable[trap]
-
 	if !ok {
 		return fmt.Errorf("unrecognized trap %x", trap)
 	}
@@ -442,7 +429,6 @@ func handlePuts(cpu *cpu) error {
 
 	for addr := cpu.registers[registers.RR0]; ; addr++ {
 		char, err := cpu.memoryRead(addr)
-
 		if err != nil {
 			return err
 		}
@@ -452,7 +438,6 @@ func handlePuts(cpu *cpu) error {
 		}
 
 		err = writer.WriteByte(byte(char))
-
 		if err != nil {
 			return err
 		}
@@ -483,13 +468,11 @@ func handleIn(cpu *cpu) error {
 	writer := bufio.NewWriter(os.Stdin)
 
 	byt, err := reader.ReadByte()
-
 	if err != nil {
 		return err
 	}
 
 	err = writer.WriteByte(byt)
-
 	if err != nil {
 		return err
 	}
@@ -507,7 +490,6 @@ func handlePutsP(cpu *cpu) error {
 
 	for addr := cpu.registers[registers.RR0]; ; addr++ {
 		char, err := cpu.memoryRead(addr)
-
 		if err != nil {
 			return err
 		}
@@ -517,7 +499,6 @@ func handlePutsP(cpu *cpu) error {
 		}
 
 		err = writer.WriteByte(byte(char & 0xFF))
-
 		if err != nil {
 			return err
 		}
