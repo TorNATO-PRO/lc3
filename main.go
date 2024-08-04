@@ -3,15 +3,14 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
-	"lc3/internal/constants"
 	"lc3/pkg/cpu"
 	"log"
 	"math"
 	"os"
 )
 
-func readImage(filename string) ([constants.MemoryMax]uint16, error) {
-	m := [constants.MemoryMax]uint16{}
+func readImage(filename string) ([math.MaxUint16 + 1]uint16, error) {
+	m := [math.MaxUint16 + 1]uint16{}
 
 	file, err := os.Open(filename)
 
@@ -63,14 +62,14 @@ func readImage(filename string) ([constants.MemoryMax]uint16, error) {
 	return m, err
 }
 
-func loadArguments() [][constants.MemoryMax]uint16 {
+func loadArguments() [][math.MaxUint16 + 1]uint16 {
 	args := os.Args[1:]
 
 	if len(args) < 1 {
 		log.Fatal("lc3 [image-file1] ...\n")
 	}
 
-	var images [][65536]uint16
+	var images [][math.MaxUint16 + 1]uint16
 
 	for _, arg := range args {
 		image, err := readImage(arg)

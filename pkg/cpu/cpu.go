@@ -7,11 +7,11 @@ package cpu
 import (
 	"bufio"
 	"fmt"
-	"lc3/internal/constants"
 	"lc3/pkg/cflags"
 	"lc3/pkg/opcodes"
 	"lc3/pkg/registers"
 	"lc3/pkg/traps"
+	"math"
 	"os"
 )
 
@@ -49,14 +49,14 @@ var trapTable = map[uint16]func(cpu *cpu, cancel func()) error{
 // we should be able to run the program!.
 type CPU interface {
 	// Run runs the CPU given an initial memory state.
-	Run(memory [constants.MemoryMax]uint16) error
+	Run(memory [math.MaxUint16 + 1]uint16) error
 }
 
 // cpu defines our default CPU implementation.
 type cpu struct {
 	// memory is the current place in memory
 	// that we are at.
-	memory [constants.MemoryMax]uint16
+	memory [math.MaxUint16 + 1]uint16
 
 	// registers denotes the current workbench state
 	// of the CPU.
@@ -90,7 +90,7 @@ func NewCPU() *cpu {
 }
 
 // Run runs the CPU over the memory.
-func (c *cpu) Run(memory [constants.MemoryMax]uint16) error {
+func (c *cpu) Run(memory [math.MaxUint16 + 1]uint16) error {
 	c.memory = memory
 
 	err := c.Loop(func(op uint16, cancel func()) error {
