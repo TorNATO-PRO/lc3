@@ -16,7 +16,7 @@ import (
 )
 
 // opTable specifies a table of operations and corresponding functions.
-var opTable = map[uint16]func(cpu *cpu, cancel func()) error{
+var opTable = map[uint16]func(cpu *cpu) error{
 	opcodes.OPADD:  handleAdd,
 	opcodes.OPBR:   handleBr,
 	opcodes.OPLD:   handleLoad,
@@ -35,7 +35,8 @@ var opTable = map[uint16]func(cpu *cpu, cancel func()) error{
 	opcodes.OPTRAP: handleTrap,
 }
 
-var trapTable = map[uint16]func(cpu *cpu, cancel func()) error{
+// trapTable is a table of traps and the corresponding handlers.
+var trapTable = map[uint16]func(cpu *cpu) error{
 	traps.GETC:  handleGetC,
 	traps.OUT:   handleOut,
 	traps.PUTS:  handlePuts,
@@ -69,6 +70,9 @@ type cpu struct {
 	// instr represents the current instruction
 	// executing on the CPU.
 	instr uint16
+
+	// cancel cancels the execution of the CPU.
+	cancel func()
 }
 
 // NewCPU defines a new CPU.
@@ -93,14 +97,14 @@ func NewCPU() *cpu {
 func (c *cpu) Run(memory [math.MaxUint16 + 1]uint16) error {
 	c.memory = memory
 
-	err := c.Loop(func(op uint16, cancel func()) error {
+	err := c.Loop(func(op uint16) error {
 		fn, ok := opTable[op]
 
 		if !ok {
 			return fmt.Errorf("unrecognized operation %d", op)
 		}
 
-		err := fn(c, cancel)
+		err := fn(c)
 
 		return err
 	})
@@ -112,25 +116,25 @@ func (c *cpu) Run(memory [math.MaxUint16 + 1]uint16) error {
 // that could potentially return an error, and executes
 // it, breaking on either the nil or a call to the cancel
 // function.
-func (c *cpu) Loop(loopCont func(op uint16, cancel func()) error) error {
+func (c *cpu) Loop(loopCont func(op uint16) error) error {
 	running := true
 
 	cancel := func() {
 		running = false
 	}
 
+	c.cancel = cancel
+
 	exec := 0
 
 	for running {
 		err := c.Step()
 
-		// fmt.Println(c.instr)
-
 		if err != nil {
 			return err
 		}
 
-		err = loopCont(c.op, cancel)
+		err = loopCont(c.op)
 
 		if err != nil {
 			return err
@@ -211,12 +215,12 @@ func (c *cpu) updateFlags(r uint16) {
 
 // unhandledOpcode specifies that an opcode has yet to
 // be handled.
-func unhandledOpcode(cpu *cpu, cancel func()) error {
+func unhandledOpcode(cpu *cpu) error {
 	return fmt.Errorf("failed to handle opcode %x", cpu.op)
 }
 
 // handleAdd handles the add opcode.
-func handleAdd(cpu *cpu, cancel func()) error {
+func handleAdd(cpu *cpu) error {
 	r0 := (cpu.instr >> 9) & 0x7
 	r1 := (cpu.instr >> 6) & 0x7
 	immFlag := (cpu.instr >> 5) & 0x1
@@ -235,7 +239,7 @@ func handleAdd(cpu *cpu, cancel func()) error {
 }
 
 // handleAnd handles the and opcode.
-func handleAnd(cpu *cpu, cancel func()) error {
+func handleAnd(cpu *cpu) error {
 	// destination register
 	r0 := (cpu.instr >> 9) & 0x7
 
@@ -259,7 +263,7 @@ func handleAnd(cpu *cpu, cancel func()) error {
 }
 
 // handleBr handles the conditional branch opcode.
-func handleBr(cpu *cpu, cancel func()) error {
+func handleBr(cpu *cpu) error {
 	condFlag := (cpu.instr >> 9) & 0x7
 	pcOffset := signExtend(cpu.instr&0x1FF, 9)
 
@@ -271,7 +275,7 @@ func handleBr(cpu *cpu, cancel func()) error {
 }
 
 // handleJmp handles the jump and ret opcodes.
-func handleJmp(cpu *cpu, cancel func()) error {
+func handleJmp(cpu *cpu) error {
 	r1 := (cpu.instr >> 6) & 0x7
 	cpu.registers[registers.RPC] = cpu.registers[r1]
 
@@ -279,7 +283,7 @@ func handleJmp(cpu *cpu, cancel func()) error {
 }
 
 // handleJsr handles the jump to subroutine opcode.
-func handleJumpSubroutine(cpu *cpu, cancel func()) error {
+func handleJumpSubroutine(cpu *cpu) error {
 	cpu.registers[registers.RR7] = cpu.registers[registers.RPC]
 
 	bit11 := (cpu.instr >> 11) & 0x1
@@ -296,7 +300,7 @@ func handleJumpSubroutine(cpu *cpu, cancel func()) error {
 }
 
 // handleLoad handles the load opcode.
-func handleLoad(cpu *cpu, cancel func()) error {
+func handleLoad(cpu *cpu) error {
 	dr := (cpu.instr >> 9) & 0x7
 	pcOffset := signExtend(cpu.instr&0x1FF, 9)
 
@@ -313,7 +317,7 @@ func handleLoad(cpu *cpu, cancel func()) error {
 }
 
 // handleLoadR handles the load base + offset opcode.
-func handleLoadR(cpu *cpu, cancel func()) error {
+func handleLoadR(cpu *cpu) error {
 	dr := (cpu.instr >> 9) & 0x7
 	br := (cpu.instr >> 6) & 0x7
 	offset := signExtend(cpu.instr&0x3F, 6)
@@ -329,7 +333,7 @@ func handleLoadR(cpu *cpu, cancel func()) error {
 }
 
 // handleStore handles the store operation.
-func handleStore(cpu *cpu, cancel func()) error {
+func handleStore(cpu *cpu) error {
 	sr := (cpu.instr >> 9) & 0x7
 	pcOffset := signExtend(cpu.instr&0x1FF, 9)
 	loc := cpu.registers[registers.RPC] + pcOffset
@@ -338,7 +342,7 @@ func handleStore(cpu *cpu, cancel func()) error {
 }
 
 // handleStoreIndirect handles store indirect.
-func handleStoreIndirect(cpu *cpu, cancel func()) error {
+func handleStoreIndirect(cpu *cpu) error {
 	pc := cpu.registers[registers.RPC]
 	pcOffset := signExtend(cpu.instr&0x1FF, 9)
 	addr, err := cpu.memoryRead(pc + pcOffset)
@@ -351,7 +355,7 @@ func handleStoreIndirect(cpu *cpu, cancel func()) error {
 }
 
 // handleStr handles the store base + offset operation.
-func handleStr(cpu *cpu, cancel func()) error {
+func handleStr(cpu *cpu) error {
 	sr := (cpu.instr >> 9) & 0x7
 	baseR := (cpu.instr >> 6) & 0x7
 	offset := signExtend(cpu.instr&0x3F, 6)
@@ -359,7 +363,7 @@ func handleStr(cpu *cpu, cancel func()) error {
 }
 
 // handleLoadEffectiveAddress handles loading the effective address.
-func handleLoadEffectiveAddress(cpu *cpu, cancel func()) error {
+func handleLoadEffectiveAddress(cpu *cpu) error {
 	dr := (cpu.instr >> 9) & 0x7
 	pcOffset := signExtend(cpu.instr&0x1FF, 9)
 	cpu.registers[dr] = cpu.registers[registers.RPC] + pcOffset
@@ -368,7 +372,7 @@ func handleLoadEffectiveAddress(cpu *cpu, cancel func()) error {
 }
 
 // handleNot handles the not address.
-func handleNot(cpu *cpu, cancel func()) error {
+func handleNot(cpu *cpu) error {
 	dr := (cpu.instr >> 9) & 0x7
 	sr := (cpu.instr >> 6) & 0x7
 	cpu.registers[dr] = ^cpu.registers[sr]
@@ -378,7 +382,7 @@ func handleNot(cpu *cpu, cancel func()) error {
 
 // handleLoadIndirect handles indirectly loading stuff
 // from the CPU.
-func handleLoadIndirect(cpu *cpu, cancel func()) error {
+func handleLoadIndirect(cpu *cpu) error {
 	r0 := (cpu.instr >> 9) & 0x7
 
 	pcOffset := signExtend(cpu.instr&0x1FF, 9)
@@ -403,7 +407,7 @@ func handleLoadIndirect(cpu *cpu, cancel func()) error {
 }
 
 // handleTrap handles the trap opcode.
-func handleTrap(cpu *cpu, cancel func()) error {
+func handleTrap(cpu *cpu) error {
 	cpu.registers[registers.RR7] = cpu.registers[registers.RPC]
 
 	trap := cpu.instr & 0xFF
@@ -414,11 +418,11 @@ func handleTrap(cpu *cpu, cancel func()) error {
 		return fmt.Errorf("unrecognized trap %x", trap)
 	}
 
-	return handler(cpu, cancel)
+	return handler(cpu)
 }
 
 // handleGetC handles the GetC trap.
-func handleGetC(cpu *cpu, cancel func()) error {
+func handleGetC(cpu *cpu) error {
 	reader := bufio.NewReader(os.Stdin)
 
 	byt, err := reader.ReadByte()
@@ -433,7 +437,9 @@ func handleGetC(cpu *cpu, cancel func()) error {
 }
 
 // handlePut handles the Puts trap.
-func handlePuts(cpu *cpu, cancel func()) error {
+func handlePuts(cpu *cpu) error {
+	writer := bufio.NewWriter(os.Stdout)
+
 	for addr := cpu.registers[registers.RR0]; ; addr++ {
 		char, err := cpu.memoryRead(addr)
 
@@ -445,14 +451,18 @@ func handlePuts(cpu *cpu, cancel func()) error {
 			break
 		}
 
-		fmt.Printf("%c", char)
+		err = writer.WriteByte(byte(char))
+
+		if err != nil {
+			return err
+		}
 	}
 
-	return nil
+	return writer.Flush()
 }
 
 // handleOut handles the Out trap.
-func handleOut(cpu *cpu, cancel func()) error {
+func handleOut(cpu *cpu) error {
 	writer := bufio.NewWriter(os.Stdout)
 
 	elem := byte(cpu.registers[registers.RR0])
@@ -465,7 +475,7 @@ func handleOut(cpu *cpu, cancel func()) error {
 }
 
 // handleIn handles the In trap.
-func handleIn(cpu *cpu, cancel func()) error {
+func handleIn(cpu *cpu) error {
 	fmt.Print("Enter a character: ")
 
 	reader := bufio.NewReader(os.Stdin)
@@ -492,7 +502,7 @@ func handleIn(cpu *cpu, cancel func()) error {
 }
 
 // handlePutsP handles the PutsP trap.
-func handlePutsP(cpu *cpu, cancel func()) error {
+func handlePutsP(cpu *cpu) error {
 	writer := bufio.NewWriter(os.Stdout)
 
 	for addr := cpu.registers[registers.RR0]; ; addr++ {
@@ -525,11 +535,8 @@ func handlePutsP(cpu *cpu, cancel func()) error {
 }
 
 // handleHalt handles the Halt trap.
-func handleHalt(cpu *cpu, cancel func()) error {
-	// this is why the cancel function is getting
-	// passed around everywhere. See what I did
-	// there???
-	cancel()
+func handleHalt(cpu *cpu) error {
+	cpu.cancel()
 
 	return nil
 }
